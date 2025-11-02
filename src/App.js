@@ -74,7 +74,7 @@ function App() {
   // Handle form submission
   const handleSubmit = async () => {
     if (!name) {
-      setModalMessage("Please enter your name / student ID.");
+      setModalMessage("Please enter your Name.");
       setModalOpen(true);
       return;
     }
@@ -149,12 +149,12 @@ function App() {
 
       {/* Name */}
       <div style={{ marginBottom: "1rem" }}>
-        <label>Name / Student ID:</label>
+        <label>Name:</label>
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
           style={{ width: "100%", padding: "8px", marginTop: "4px", borderRadius: "4px", border: "1px solid #ccc" }}
-          placeholder="Enter your name or ID"
+          placeholder="Enter your name "
         />
       </div>
 
