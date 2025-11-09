@@ -21,8 +21,7 @@ function App() {
     q2: "",
     q3: "",
     q4: "",
-    q5: "",
-    q6a: [],
+    q6a: "",
     q7: "",
   });
   const [submitted, setSubmitted] = useState(false);
@@ -31,6 +30,7 @@ function App() {
   const [sessionId, setSessionId] = useState(
     () => "S" + Date.now().toString().slice(-6)
   );
+  const [loading, setLoading] = useState(false);
 
   const q6Options = [
     "Some Birds are considered warm-blooded or homeothermic.",
@@ -43,7 +43,6 @@ function App() {
     "This is the measure of how effectively endotherms maintain a stable core temperature during a decrease or increase in the ambient temperature",
   ];
 
-  // --- Handle table edits safely ---
   const handleEdit = (index, field, value) => {
     setData((prev) =>
       prev.map((row, i) =>
@@ -77,16 +76,23 @@ function App() {
 
   const handleCheckboxChange = (option) => {
     setReflections((prev) => {
-      const current = prev.q6a;
-      if (current.includes(option)) {
-        return { ...prev, q6a: current.filter((o) => o !== option) };
+      const currentSelections = prev.q6a ? prev.q6a.split("; ").filter(item => item !== "") : [];
+      
+      if (currentSelections.includes(option)) {
+        const updatedSelections = currentSelections.filter((o) => o !== option);
+        return { ...prev, q6a: updatedSelections.join("; ") };
       } else {
-        return { ...prev, q6a: [...current, option] };
+        const updatedSelections = [...currentSelections, option];
+        return { ...prev, q6a: updatedSelections.join("; ") };
       }
     });
   };
 
-  // --- Submit handler ---
+  const isOptionSelected = (option) => {
+    return reflections.q6a ? reflections.q6a.split("; ").includes(option) : false;
+  };
+
+  // --- Fixed Submit handler that matches Google Apps Script structure ---
   const handleSubmit = async () => {
     if (!name) {
       setModalMessage("Please enter your Name.");
@@ -103,22 +109,64 @@ function App() {
       return;
     }
 
+    setLoading(true);
+
     try {
-      // Here you can send data to Google Sheets or API if needed
-      setSubmitted(true);
-      setModalMessage("✅ Submission Complete! You can now print or start a new session.");
-      setModalOpen(true);
+      // Prepare form data to match Google Apps Script expectations
+      const formData = new URLSearchParams();
+      
+      // Add basic parameters
+      formData.append('sessionId', sessionId);
+      formData.append('name', name);
+      formData.append('q1', reflections.q1);
+      formData.append('q2', reflections.q2);
+      formData.append('q3', reflections.q3);
+      formData.append('q4', reflections.q4);
+      formData.append('q6a', reflections.q6a);
+      formData.append('q7', reflections.q7);
+      formData.append('numRows', data.length.toString());
+
+      // Add table data in the format expected by Google Apps Script
+      data.forEach((row, index) => {
+        formData.append(`ambient${index}`, row.ambient || "");
+        formData.append(`bird${index}`, row.bird || "");
+        formData.append(`behavior${index}`, row.behavior || "");
+      });
+
+      console.log("Submitting form data:", Object.fromEntries(formData));
+
+      // Send as form data (not JSON)
+      const response = await fetch(
+        "https://script.google.com/macros/s/AKfycbxCXGMUU_yG6-GP5yLZrWXIqvoeyNo6f5PEojV6ivs6582xJhpBvJ7WSv4Je4HzzwB7/exec",
+        {
+          method: "POST",
+          body: formData
+        }
+      );
+
+      const result = await response.json();
+      console.log("Google Apps Script response:", result);
+
+      if (result.status === "success") {
+        setSubmitted(true);
+        setModalMessage("✅ Submission Complete! Data saved to Google Sheets.");
+        setModalOpen(true);
+      } else {
+        throw new Error(result.message || "Unknown error from server");
+      }
     } catch (err) {
-      console.error(err);
-      setModalMessage("❌ Failed to submit readings. Try again.");
+      console.error("Submission error:", err);
+      setModalMessage(`❌ Failed to submit: ${err.message}. Check console for details.`);
       setModalOpen(true);
+    } finally {
+      setLoading(false);
     }
   };
 
   const startNewSession = () => {
     setName("");
     setData([{ ambient: "", bird: "", behavior: "Low Altitude" }]);
-    setReflections({ q1: "", q2: "", q3: "", q4: "", q5: "", q6a: [], q7: "" });
+    setReflections({ q1: "", q2: "", q3: "", q4: "", q6a: "", q7: "" });
     setSubmitted(false);
     setSessionId("S" + Date.now().toString().slice(-6));
   };
@@ -162,6 +210,7 @@ function App() {
             border: "1px solid #ccc",
           }}
           placeholder="Enter your name"
+          disabled={submitted}
         />
       </div>
 
@@ -174,6 +223,7 @@ function App() {
           value={reflections.q1}
           onChange={(e) => handleReflectionChange("q1", e.target.value)}
           style={{ width: "100%", padding: "10px", minHeight: "80px", marginBottom: "8px" }}
+          disabled={submitted}
         />
       </div>
       <div style={{ marginBottom: "1rem" }}>
@@ -184,6 +234,7 @@ function App() {
           value={reflections.q2}
           onChange={(e) => handleReflectionChange("q2", e.target.value)}
           style={{ width: "100%", padding: "10px", minHeight: "80px", marginBottom: "8px" }}
+          disabled={submitted}
         />
       </div>
 
@@ -196,17 +247,19 @@ function App() {
           value={reflections.q3}
           onChange={(e) => handleReflectionChange("q3", e.target.value)}
           style={{ width: "100%", padding: "10px", minHeight: "80px", marginBottom: "8px" }}
+          disabled={submitted}
         />
       </div>
 
       <div style={{ marginBottom: "1rem" }}>
         <label style={{ fontWeight: "bold", display: "block", marginBottom: "4px" }}>
-          4. Interpret the data collected in the table and its visualization on the graph.
+          4. Interpret the data collected in the table and its visualization on the graph. You can follow the sentence beginner: As ambient temperature increases, decreases(changes), the birds' temperature...
         </label>
         <textarea
           value={reflections.q4}
           onChange={(e) => handleReflectionChange("q4", e.target.value)}
           style={{ width: "100%", padding: "10px", minHeight: "80px", marginBottom: "8px" }}
+          disabled={submitted}
         />
       </div>
 
@@ -241,6 +294,7 @@ function App() {
                   value={row.ambient}
                   onChange={(e) => handleEdit(idx, "ambient", e.target.value)}
                   style={{ width: "100%", padding: "8px", border: "none", textAlign: "center" }}
+                  disabled={submitted}
                 />
               </td>
               <td style={{ border: "1px solid #ccc" }}>
@@ -249,6 +303,7 @@ function App() {
                   value={row.bird}
                   onChange={(e) => handleEdit(idx, "bird", e.target.value)}
                   style={{ width: "100%", padding: "8px", border: "none", textAlign: "center" }}
+                  disabled={submitted}
                 />
               </td>
               <td style={{ border: "1px solid #ccc" }}>
@@ -256,45 +311,50 @@ function App() {
                   value={row.behavior}
                   onChange={(e) => handleEdit(idx, "behavior", e.target.value)}
                   style={{ width: "100%", padding: "8px", border: "none", textAlign: "center" }}
+                  disabled={submitted}
                 >
                   <option>Low Altitude</option>
                   <option>High Altitude</option>
                 </select>
               </td>
               <td style={{ border: "1px solid #ccc", textAlign: "center", width: "10%" }}>
-                <button
-                  onClick={() => handleDeleteRow(idx)}
-                  style={{
-                    backgroundColor: "#e53935",
-                    color: "white",
-                    border: "none",
-                    padding: "4px 8px",
-                    borderRadius: "4px",
-                    cursor: "pointer",
-                  }}
-                >
-                  ✕
-                </button>
+                {!submitted && (
+                  <button
+                    onClick={() => handleDeleteRow(idx)}
+                    style={{
+                      backgroundColor: "#e53935",
+                      color: "white",
+                      border: "none",
+                      padding: "4px 8px",
+                      borderRadius: "4px",
+                      cursor: "pointer",
+                    }}
+                  >
+                    ✕
+                  </button>
+                )}
               </td>
             </tr>
           ))}
         </tbody>
       </table>
 
-      <button
-        onClick={handleAddRow}
-        style={{
-          backgroundColor: "#1976d2",
-          color: "white",
-          border: "none",
-          padding: "8px 12px",
-          cursor: "pointer",
-          borderRadius: "4px",
-          marginBottom: "1rem",
-        }}
-      >
-        ➕ Add Row
-      </button>
+      {!submitted && (
+        <button
+          onClick={handleAddRow}
+          style={{
+            backgroundColor: "#1976d2",
+            color: "white",
+            border: "none",
+            padding: "8px 12px",
+            cursor: "pointer",
+            borderRadius: "4px",
+            marginBottom: "1rem",
+          }}
+        >
+          ➕ Add Row
+        </button>
+      )}
 
       {/* Graph */}
       <ResponsiveContainer width="100%" height={320}>
@@ -311,28 +371,18 @@ function App() {
         </ScatterChart>
       </ResponsiveContainer>
 
-      {/* Remaining Questions */}
+      {/* Remaining Questions (now Q6 and Q7 after the graph) */}
       <div style={{ marginBottom: "1rem" }}>
         <label style={{ fontWeight: "bold", display: "block", marginBottom: "4px" }}>
-          5. You can follow the sentence beginner: As ambient temperature increases, decreases(changes), the birds' temperature...
-        </label>
-        <textarea
-          value={reflections.q5}
-          onChange={(e) => handleReflectionChange("q5", e.target.value)}
-          style={{ width: "100%", padding: "10px", minHeight: "80px", marginBottom: "8px" }}
-        />
-      </div>
-
-      <div style={{ marginBottom: "1rem" }}>
-        <label style={{ fontWeight: "bold", display: "block", marginBottom: "4px" }}>
-          6. Choose the scientific concepts and principles that describe the processes of the birds' convergent and divergent evolution. (select all that apply)
+          5. Choose the scientific concepts and principles that describe the processes of the birds' convergent and divergent evolution. (select all that apply)
         </label>
         {q6Options.map((option, i) => (
           <div key={i}>
             <input
               type="checkbox"
-              checked={reflections.q6a.includes(option)}
+              checked={isOptionSelected(option)}
               onChange={() => handleCheckboxChange(option)}
+              disabled={submitted}
             />{" "}
             {option}
           </div>
@@ -341,12 +391,13 @@ function App() {
 
       <div style={{ marginBottom: "1rem" }}>
         <label style={{ fontWeight: "bold", display: "block", marginBottom: "4px" }}>
-          7. What revisions, if any, will you make to your pretest based on the workshop experience?
+          6. What revisions, if any, will you make to your pretest based on the workshop experience?
         </label>
         <textarea
           value={reflections.q7}
           onChange={(e) => handleReflectionChange("q7", e.target.value)}
           style={{ width: "100%", padding: "10px", minHeight: "80px", marginBottom: "8px" }}
+          disabled={submitted}
         />
       </div>
 
@@ -355,18 +406,20 @@ function App() {
         {!submitted && (
           <button
             onClick={handleSubmit}
+            disabled={loading}
             style={{
-              backgroundColor: "green",
+              backgroundColor: loading ? "gray" : "green",
               color: "white",
               border: "none",
               padding: "10px 16px",
-              cursor: "pointer",
+              cursor: loading ? "not-allowed" : "pointer",
               fontSize: "1rem",
               borderRadius: "4px",
               marginRight: "1rem",
+              opacity: loading ? 0.6 : 1,
             }}
           >
-            Submit All Readings
+            {loading ? "Submitting..." : "Submit All Readings"}
           </button>
         )}
         {submitted && (
@@ -459,8 +512,13 @@ function App() {
             input, textarea, select {
               font-size: 14px;
               height: auto !important;
+              border: 1px solid #ccc !important;
+              background: white !important;
             }
             button {
+              display: none;
+            }
+            .no-print {
               display: none;
             }
           }
